@@ -6,7 +6,7 @@ import re
 from io import BytesIO
 
 st.set_page_config(page_title="Test", layout="centered")
-st.title("📄 Test v1.3")
+st.title("📄 Test v1.31")
 st.markdown("Upload a K-3 PDF and extract each section into its own Excel worksheet.")
 
 def extract_sections(file):
