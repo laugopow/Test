@@ -23,24 +23,22 @@ def extract_sections(file):
     with pdfplumber.open(file) as pdf:
         full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    # Find all section header matches and their start positions
-    section_positions = []
-    for part, pattern in SECTION_PATTERNS.items():
-        match = re.search(pattern, full_text)
-        if match:
-            section_positions.append((match.start(), part))
+    # Define a regex that matches "Part X"
+    part_pattern = re.compile(r"(Part\s+(I{1,3}|IV|VIII|IX|X))", re.IGNORECASE)
 
-    # Sort by position in the text
-    section_positions.sort()
-
-    # Split and extract each section’s text
+    # Find all part headers and their positions
+    matches = list(part_pattern.finditer(full_text))
     sections = {}
-    for i, (start_idx, part) in enumerate(section_positions):
-        end_idx = section_positions[i + 1][0] if i + 1 < len(section_positions) else len(full_text)
+
+    for i, match in enumerate(matches):
+        part_name = match.group(1).strip().title()  # E.g., "Part Ii" => "Part II"
+        start_idx = match.start()
+        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
         section_text = full_text[start_idx:end_idx]
 
-        key_value_pairs = []
+        # Extract key-value pairs from this section
         lines = section_text.strip().splitlines()
+        key_value_pairs = []
         for line in lines:
             match = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
             if match:
@@ -50,7 +48,7 @@ def extract_sections(file):
 
         if key_value_pairs:
             df = pd.DataFrame(key_value_pairs, columns=["Field", "Value"])
-            sections[part] = df
+            sections[part_name] = df
 
     return sections
 
