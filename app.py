@@ -12,7 +12,15 @@ st.set_page_config(page_title="K-3 PDF to Excel", layout="centered")
 st.title("📄 Schedule K-3 Visual Extractor (v2)")
 st.markdown("Extracts each K-3 part into a separate worksheet, preserving visual layout.")
 
-table_settings = {'vertical_strategy': 'lines', 'horizontal_strategy': 'lines', 'snap_tolerance': 3, 'intersection_tolerance': 5, 'edge_min_length': 3, 'min_words_vertical': 1, 'min_words_horizontal': 1, 'keep_blank_chars': True}
+table_settings = {
+    "vertical_strategy": "lines",
+    "horizontal_strategy": "lines",
+    "snap_tolerance": 3,
+    "intersection_tolerance": 5,
+    "edge_min_length": 3,
+    "min_words_vertical": 1,
+    "min_words_horizontal": 1
+}
 
 def extract_tables_by_part(pdf_file):
     part_tables = {}
