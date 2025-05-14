@@ -2,101 +2,87 @@
 import streamlit as st
 import pdfplumber
 import pandas as pd
-import re
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Font, Alignment, Border, Side
 from io import BytesIO
+import re
 
-st.set_page_config(page_title="Test", layout="centered")
-st.title("📄 Test v1.32")
-st.markdown("Upload a K-3 PDF and extract each section into its own Excel worksheet.")
+st.set_page_config(page_title="K-3 PDF to Excel", layout="centered")
+st.title("📄 Schedule K-3 Visual Extractor (v2)")
+st.markdown("Extracts each K-3 part into a separate worksheet, preserving visual layout.")
 
-def extract_sections(file):
-    with pdfplumber.open(file) as pdf:
-        full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+table_settings = {'vertical_strategy': 'lines', 'horizontal_strategy': 'lines', 'snap_tolerance': 3, 'intersection_tolerance': 5, 'edge_min_length': 3, 'min_words_vertical': 1, 'min_words_horizontal': 1, 'keep_blank_chars': True}
 
-    lines = full_text.splitlines()
-    sections = {"General Data": []}
-    current_section = "General Data"
+def extract_tables_by_part(pdf_file):
+    part_tables = {}
+    current_part = "General"
+    part_pattern = pd.Series(["Part I", "Part II", "Part III", "Part IV", "Part V", "Part VI", "Part VII",
+                              "Part VIII", "Part IX", "Part X", "Part XI", "Part XII", "Part XIII"])
 
-    part_marker = re.compile(r"Part\s+(I{1,3}|IV|VIII|IX|X)\b", re.IGNORECASE)
-    kv_pattern = re.compile(r"^(.{3,}?)\s+([\d,]+\.?|NONE)$")
+    with pdfplumber.open(pdf_file) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for line in text.splitlines():
+                for part in part_pattern:
+                    if part in line:
+                        current_part = part
+                        break
 
-    debug_hits = []
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        line = re.sub(r"\bm\b", "", line)
-        line = re.sub(r"m{2,}", "", line)  # collapse multi-m's
-        line = re.sub(r"\s{2,}", " ", line)  # normalize extra spaces
+            tables = page.extract_tables(table_settings)
+            for table in tables:
+                if table and len(table) > 1:
+                    df = pd.DataFrame(table[1:], columns=table[0])
+                    part_tables.setdefault(current_part, []).append(df)
+    return part_tables
 
-        # Section detection
-        part_match = part_marker.search(line)
-        if part_match:
-            current_section = f"Part {part_match.group(1).upper()}"
-            if current_section not in sections:
-                sections[current_section] = []
-            i += 1
-            continue
+def write_to_excel(part_tables):
+    wb = Workbook()
+    wb.remove(wb.active)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
 
-        # Try joining with next line
-        if i + 1 < len(lines):
-            merged = line + " " + lines[i + 1].strip()
-            match = kv_pattern.match(merged)
-            if match:
-                key = match.group(1).strip()
-                value = match.group(2).strip()
-                sections[current_section].append((key, value))
-                debug_hits.append(f"{key} → {value}")
-                i += 2
+    for part, tables in part_tables.items():
+        ws = wb.create_sheet(title=part[:31])
+        for df in tables:
+            if df.empty:
                 continue
+            for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=ws.max_row + 1):
+                ws.append(row)
+                for c_idx, cell in enumerate(ws[r_idx], start=1):
+                    cell.alignment = Alignment(wrap_text=True, vertical="top")
+                    cell.border = border
+                    if r_idx == 1:
+                        cell.font = Font(bold=True)
 
-        # Try single line match
-        match = kv_pattern.match(line)
-        if match:
-            key = match.group(1).strip()
-            value = match.group(2).strip()
-            sections[current_section].append((key, value))
-            debug_hits.append(f"{key} → {value}")
-        i += 1
+        for col in ws.columns:
+            max_len = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    max_len = max(max_len, len(str(cell.value)))
+            ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
 
-    # Debug view
-    st.subheader("🔍 Key/Value Lines Detected")
-    if debug_hits:
-        st.text("\n".join(debug_hits[:30]))
-    else:
-        st.warning("No lines matched the label/value pattern.")
-
-    # Convert each group to DataFrame
-    result = {}
-    for part, items in sections.items():
-        if items:
-            df = pd.DataFrame(items, columns=["Field", "Value"])
-            result[part] = df
-    return result
-
-def convert_to_excel(sections_dict):
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        for part, df in sections_dict.items():
-            df.to_excel(writer, sheet_name=part[:31], index=False)
+    wb.save(buffer)
     buffer.seek(0)
     return buffer
 
 uploaded_file = st.file_uploader("Upload a K-3 PDF", type="pdf")
-
 if uploaded_file:
-    with st.spinner("Extracting data..."):
+    with st.spinner("Extracting tables and formatting Excel..."):
         try:
-            sections = extract_sections(uploaded_file)
-            if not sections:
-                st.warning("No relevant data sections found.")
+            tables_by_part = extract_tables_by_part(uploaded_file)
+            if not tables_by_part:
+                st.warning("No tables found.")
             else:
-                excel_data = convert_to_excel(sections)
-                st.success("✅ Data extracted successfully!")
-                st.download_button(
-                    label="📥 Download Excel File",
-                    data=excel_data,
-                    file_name="k3_extracted_sections.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                excel_file = write_to_excel(tables_by_part)
+                st.success("✅ Done! Download below.")
+                st.download_button("📥 Download Excel File", excel_file, file_name="k3_formatted_output.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception as e:
-            st.error(f"Error processing PDF: {e}")
+            st.error(f"An error occurred: {e}")
