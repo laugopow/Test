@@ -6,7 +6,7 @@ from io import BytesIO
 
 st.set_page_config(page_title="Test", layout="centered")
 
-st.title("📄 Test v1")
+st.title("📄 Test v1.1")
 st.markdown("Upload a PDF and extract each section into its own Excel worksheet.")
 
 SECTION_PATTERNS = {
@@ -20,47 +20,45 @@ SECTION_PATTERNS = {
 }
 
 def extract_sections(file):
+    import pdfplumber
+    import pandas as pd
+    import re
+
     with pdfplumber.open(file) as pdf:
-        pages = []
-        for i, page in enumerate(pdf.pages):
-            text = page.extract_text()
-            if text:
-                pages.append(f"--- Page {i+1} ---\n{text}")
+        full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-        full_text = "\n".join(pages)
+    # Normalize line breaks and extract all valid key-value lines
+    lines = full_text.splitlines()
+    sections = {"General Data": []}
+    current_section = "General Data"
 
-    # 🔍 DEBUG OUTPUT: show raw text from PDF
-    st.subheader("🔍 Raw Extracted Text")
-    st.text_area("Scroll to inspect what was read from the PDF", full_text[:8000], height=400)
+    part_marker = re.compile(r"Part\s+(I{1,3}|IV|VIII|IX|X)\b", re.IGNORECASE)
+    kv_pattern = re.compile(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$")
 
-    # Match Part headers like "Part I", "Part II", etc.
-    part_pattern = re.compile(r"(Part\s+(I{1,3}|IV|VIII|IX|X))", re.IGNORECASE)
-    matches = list(part_pattern.finditer(full_text))
+    for line in lines:
+        # Detect part headers (for optional grouping)
+        part_match = part_marker.search(line)
+        if part_match:
+            current_section = f"Part {part_match.group(1).upper()}"
+            if current_section not in sections:
+                sections[current_section] = []
+            continue
 
-    st.write("🧩 Detected Part Headers:")
-    st.write([m.group(1) for m in matches])
+        # Match lines that look like "Label   123,456." or "Label   NONE"
+        kv_match = kv_pattern.match(line.strip())
+        if kv_match:
+            key = kv_match.group(1).strip()
+            value = kv_match.group(2).strip()
+            sections[current_section].append((key, value))
 
-    sections = {}
-    for i, match in enumerate(matches):
-        part_name = match.group(1).strip().title()
-        start_idx = match.start()
-        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
-        section_text = full_text[start_idx:end_idx]
+    # Convert each group to a DataFrame
+    result = {}
+    for part, items in sections.items():
+        if items:
+            df = pd.DataFrame(items, columns=["Field", "Value"])
+            result[part] = df
 
-        key_value_pairs = []
-        lines = section_text.strip().splitlines()
-        for line in lines:
-            kv = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
-            if kv:
-                key = kv.group(1).strip()
-                value = kv.group(2).strip()
-                key_value_pairs.append((key, value))
-
-        if key_value_pairs:
-            df = pd.DataFrame(key_value_pairs, columns=["Field", "Value"])
-            sections[part_name] = df
-
-    return sections
+    return result
 
 def convert_to_excel(sections_dict):
     buffer = BytesIO()
