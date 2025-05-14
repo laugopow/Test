@@ -21,29 +21,39 @@ SECTION_PATTERNS = {
 
 def extract_sections(file):
     with pdfplumber.open(file) as pdf:
-        full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+        pages = []
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text()
+            if text:
+                pages.append(f"--- Page {i+1} ---\n{text}")
 
-    # Define a regex that matches "Part X"
+        full_text = "\n".join(pages)
+
+    # 🔍 DEBUG OUTPUT: show raw text from PDF
+    st.subheader("🔍 Raw Extracted Text")
+    st.text_area("Scroll to inspect what was read from the PDF", full_text[:8000], height=400)
+
+    # Match Part headers like "Part I", "Part II", etc.
     part_pattern = re.compile(r"(Part\s+(I{1,3}|IV|VIII|IX|X))", re.IGNORECASE)
-
-    # Find all part headers and their positions
     matches = list(part_pattern.finditer(full_text))
-    sections = {}
 
+    st.write("🧩 Detected Part Headers:")
+    st.write([m.group(1) for m in matches])
+
+    sections = {}
     for i, match in enumerate(matches):
-        part_name = match.group(1).strip().title()  # E.g., "Part Ii" => "Part II"
+        part_name = match.group(1).strip().title()
         start_idx = match.start()
         end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
         section_text = full_text[start_idx:end_idx]
 
-        # Extract key-value pairs from this section
-        lines = section_text.strip().splitlines()
         key_value_pairs = []
+        lines = section_text.strip().splitlines()
         for line in lines:
-            match = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
-            if match:
-                key = match.group(1).strip()
-                value = match.group(2).strip()
+            kv = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
+            if kv:
+                key = kv.group(1).strip()
+                value = kv.group(2).strip()
                 key_value_pairs.append((key, value))
 
         if key_value_pairs:
