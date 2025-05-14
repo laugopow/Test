@@ -4,10 +4,10 @@ import pandas as pd
 import re
 from io import BytesIO
 
-st.set_page_config(page_title="K-3 PDF to Excel", layout="centered")
+st.set_page_config(page_title="Test", layout="centered")
 
-st.title("📄 Schedule K-3 to Excel Converter")
-st.markdown("Upload a K-3 PDF and extract each section into its own Excel worksheet.")
+st.title("📄 Test")
+st.markdown("Upload a PDF and extract each section into its own Excel worksheet.")
 
 SECTION_PATTERNS = {
     "Part I": r"Part I\b",
