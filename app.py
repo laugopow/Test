@@ -6,7 +6,7 @@ from io import BytesIO
 
 st.set_page_config(page_title="Test", layout="centered")
 
-st.title("📄 Test v1.1")
+st.title("📄 Test v1.2")
 st.markdown("Upload a PDF and extract each section into its own Excel worksheet.")
 
 SECTION_PATTERNS = {
@@ -27,16 +27,21 @@ def extract_sections(file):
     with pdfplumber.open(file) as pdf:
         full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    # Normalize line breaks and extract all valid key-value lines
     lines = full_text.splitlines()
     sections = {"General Data": []}
     current_section = "General Data"
 
     part_marker = re.compile(r"Part\s+(I{1,3}|IV|VIII|IX|X)\b", re.IGNORECASE)
-    kv_pattern = re.compile(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$")
+    
+    # 💡 Looser match: any line with a value at the end
+    kv_pattern = re.compile(r"^(.{3,}?)\s+([\d,]+\.?|NONE)$")
+
+    debug_hits = []  # store what it matches
 
     for line in lines:
-        # Detect part headers (for optional grouping)
+        line = line.strip()
+
+        # Detect part section headers
         part_match = part_marker.search(line)
         if part_match:
             current_section = f"Part {part_match.group(1).upper()}"
@@ -44,12 +49,20 @@ def extract_sections(file):
                 sections[current_section] = []
             continue
 
-        # Match lines that look like "Label   123,456." or "Label   NONE"
-        kv_match = kv_pattern.match(line.strip())
+        # Try to find a key/value line
+        kv_match = kv_pattern.match(line)
         if kv_match:
             key = kv_match.group(1).strip()
             value = kv_match.group(2).strip()
             sections[current_section].append((key, value))
+            debug_hits.append(f"{key} → {value}")
+
+    # Debug output to help you verify
+    st.subheader("🔍 Key/Value Lines Detected")
+    if debug_hits:
+        st.text("\n".join(debug_hits[:30]))  # Show the first 30 matches
+    else:
+        st.warning("No lines matched the label/value pattern.")
 
     # Convert each group to a DataFrame
     result = {}
