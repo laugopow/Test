@@ -6,7 +6,7 @@ from io import BytesIO
 
 st.set_page_config(page_title="Test", layout="centered")
 
-st.title("📄 Test")
+st.title("📄 Test v1")
 st.markdown("Upload a PDF and extract each section into its own Excel worksheet.")
 
 SECTION_PATTERNS = {
