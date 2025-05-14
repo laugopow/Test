@@ -6,7 +6,7 @@ import re
 from io import BytesIO
 
 st.set_page_config(page_title="Test", layout="centered")
-st.title("📄 Test v1.31")
+st.title("📄 Test v1.32")
 st.markdown("Upload a K-3 PDF and extract each section into its own Excel worksheet.")
 
 def extract_sections(file):
@@ -24,6 +24,9 @@ def extract_sections(file):
     i = 0
     while i < len(lines):
         line = lines[i].strip()
+        line = re.sub(r"\bm\b", "", line)
+        line = re.sub(r"m{2,}", "", line)  # collapse multi-m's
+        line = re.sub(r"\s{2,}", " ", line)  # normalize extra spaces
 
         # Section detection
         part_match = part_marker.search(line)
