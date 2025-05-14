@@ -9,38 +9,49 @@ st.set_page_config(page_title="K-3 PDF to Excel", layout="centered")
 st.title("📄 Schedule K-3 to Excel Converter")
 st.markdown("Upload a K-3 PDF and extract each section into its own Excel worksheet.")
 
-SECTION_HEADERS = {
-    "Part I": "Partner's Share of Partnership's Other Current Year International Information Part I",
-    "Part II": "Foreign Tax Credit Limitation Part II",
-    "Part III": "Other Information for Preparation of Form 1116 or 1118 Part III",
-    "Part IV": "Information on Partner's Section 250 Deduction With Respect to Foreign-Derived Intangible Income (FDII) Part IV",
-    "Part VIII": "Partner's Interest in Foreign Corporation Income (Section 960) (continued) Part VIII",
-    "Part IX": "Partner's Information for Base Erosion and Anti-Abuse Tax (Section 59A) Part IX",
-    "Part X": "Foreign Partner's Character and Source of Income and Deductions Part X",
+SECTION_PATTERNS = {
+    "Part I": r"Part I\b",
+    "Part II": r"Part II\b",
+    "Part III": r"Part III\b",
+    "Part IV": r"Part IV\b",
+    "Part VIII": r"Part VIII\b",
+    "Part IX": r"Part IX\b",
+    "Part X": r"Part X\b"
 }
 
 def extract_sections(file):
     with pdfplumber.open(file) as pdf:
         full_text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    sections = {}
-    for part, header in SECTION_HEADERS.items():
-        pattern = rf"({re.escape(header)})(.*?)(?=\n(?:{'|'.join(map(re.escape, SECTION_HEADERS.values()))})|\Z)"
-        match = re.search(pattern, full_text, re.DOTALL)
+    # Find all section header matches and their start positions
+    section_positions = []
+    for part, pattern in SECTION_PATTERNS.items():
+        match = re.search(pattern, full_text)
         if match:
-            raw_lines = match.group(2).strip().splitlines()
-            key_value_pairs = []
+            section_positions.append((match.start(), part))
 
-            for line in raw_lines:
-                match = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
-                if match:
-                    key = match.group(1).strip()
-                    value = match.group(2).strip()
-                    key_value_pairs.append((key, value))
+    # Sort by position in the text
+    section_positions.sort()
 
-            if key_value_pairs:
-                df = pd.DataFrame(key_value_pairs, columns=["Field", "Value"])
-                sections[part] = df
+    # Split and extract each section’s text
+    sections = {}
+    for i, (start_idx, part) in enumerate(section_positions):
+        end_idx = section_positions[i + 1][0] if i + 1 < len(section_positions) else len(full_text)
+        section_text = full_text[start_idx:end_idx]
+
+        key_value_pairs = []
+        lines = section_text.strip().splitlines()
+        for line in lines:
+            match = re.match(r"^(.+?)\s{2,}([\d,]+\.?|NONE)$", line.strip())
+            if match:
+                key = match.group(1).strip()
+                value = match.group(2).strip()
+                key_value_pairs.append((key, value))
+
+        if key_value_pairs:
+            df = pd.DataFrame(key_value_pairs, columns=["Field", "Value"])
+            sections[part] = df
+
     return sections
 
 def convert_to_excel(sections_dict):
