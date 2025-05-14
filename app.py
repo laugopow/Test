@@ -9,7 +9,7 @@ from io import BytesIO
 import re
 
 st.set_page_config(page_title="K-3 PDF to Excel", layout="centered")
-st.title("📄 Schedule K-3 Visual Extractor (v2)")
+st.title("📄 Schedule K-3 Visual Extractor (v2.1)")
 st.markdown("Extracts each K-3 part into a separate worksheet, preserving visual layout.")
 
 table_settings = {
